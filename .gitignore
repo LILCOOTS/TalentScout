@@ -56,3 +56,10 @@ Thumbs.db
 # Alternative dependency files
 requirements_cloud.txt
 env_cloud_template
+gitignore
+.env
+data/
+*.log
+__pycache__/
+test_*.py
+VERCEL_DEPLOYMENT_GUIDE.md
