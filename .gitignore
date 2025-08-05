@@ -63,3 +63,4 @@ data/
 __pycache__/
 test_*.py
 VERCEL_DEPLOYMENT_GUIDE.md
+STREAMLIT_DEPLOY_QUICK.md

@@ -1,19 +1,15 @@
 {
   "builds": [
     {
-      "src": "app.py",
-      "use": "@vercel/python"
+      "src": "streamlit_app.py",
+      "use": "vercel-python-wsgi",
+      "config": { "maxLambdaSize": "15mb" }
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/app.py"
+      "dest": "streamlit_app.py"
     }
-  ],
-  "functions": {
-    "app.py": {
-      "runtime": "python3.9"
-    }
-  }
+  ]
 }
