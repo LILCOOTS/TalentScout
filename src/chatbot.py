@@ -14,14 +14,7 @@ from datetime import datetime
 from src.config import Config
 from src.data_handler import CandidateProfile, CandidateDataHandler
 
-# Try to import cloud data handler, fallback to local if not available
-try:
-    from src.cloud_data_handler import CloudDataHandler
-    USE_CLOUD_STORAGE = True
-except ImportError:
-    USE_CLOUD_STORAGE = False
-
-# Configure logging
+# Configure logging first
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -32,57 +25,93 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Try to import cloud data handler, fallback to local if not available
+try:
+    from src.cloud_data_handler import CloudDataHandler
+    import os
+    # Check if we have cloud storage environment variables
+    SUPABASE_URL = os.getenv('SUPABASE_URL')
+    SUPABASE_KEY = os.getenv('SUPABASE_ANON_KEY') or os.getenv('SUPABASE_KEY')
+    ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+    
+    # Use cloud storage if we have the required environment variables or if in production
+    USE_CLOUD_STORAGE = bool(SUPABASE_URL and SUPABASE_KEY) or ENVIRONMENT == 'production'
+    
+    logger.info(f"Cloud storage detection: URL={'***' if SUPABASE_URL else 'None'}, KEY={'***' if SUPABASE_KEY else 'None'}, ENV={ENVIRONMENT}")
+    logger.info(f"USE_CLOUD_STORAGE: {USE_CLOUD_STORAGE}")
+    
+except ImportError as e:
+    USE_CLOUD_STORAGE = False
+    logger.warning(f"Cloud data handler not available: {e}")
+    logger.info("Falling back to local storage")
+
 class HiringAssistant:
     """Main chatbot class for handling candidate interactions."""
     
     def __init__(self, config: Config):
-        """Initialize the hiring assistant."""
-        self.config = config
+        """Initialize the hiring assistant with comprehensive error handling."""
+        logger.info("Starting HiringAssistant initialization...")
         
-        # Use cloud data handler if available, otherwise fallback to local
-        if USE_CLOUD_STORAGE:
-            self.data_handler = CloudDataHandler(config.data_storage_path)
-            logger.info("✅ Using cloud data storage (Supabase)")
-        else:
-            self.data_handler = CandidateDataHandler(config.data_storage_path)
-            logger.info("⚠️ Using local file storage (not suitable for deployment)")
-        
-        self.prompts = config.get_prompts()
-        
-        logger.info("Initializing HiringAssistant...")
-        logger.info(f"Company: {config.company_name}")
-        logger.info(f"Model: {config.model_name}")
-        logger.info(f"API Key present: {bool(config.gemini_api_key)}")
-        
-        # Validate configuration
-        if not config.validate_config():
-            logger.error("Configuration validation failed")
-            raise ValueError("Invalid configuration. Please check your API key and settings.")
-        
-        logger.info("Configuration validation passed")
-        
-        # Set up Gemini AI
         try:
-            logger.info("Configuring Gemini AI...")
-            genai.configure(api_key=config.gemini_api_key)
-            self.model = genai.GenerativeModel(config.model_name)
+            self.config = config
             
-            # Configure generation settings
-            self.generation_config = genai.types.GenerationConfig(
-                max_output_tokens=config.max_tokens,
-                temperature=config.temperature,
-            )
+            # Use cloud data handler if available, otherwise fallback to local
+            logger.info(f"Initializing data handler (USE_CLOUD_STORAGE: {USE_CLOUD_STORAGE})")
             
-            logger.info("Gemini AI initialized successfully")
+            if USE_CLOUD_STORAGE:
+                try:
+                    self.data_handler = CloudDataHandler(config.data_storage_path)
+                    logger.info("✅ Using cloud data storage (Supabase)")
+                except Exception as cloud_error:
+                    logger.warning(f"Cloud storage initialization failed: {cloud_error}")
+                    logger.info("Falling back to local storage")
+                    self.data_handler = CandidateDataHandler(config.data_storage_path)
+            else:
+                self.data_handler = CandidateDataHandler(config.data_storage_path)
+                logger.info("⚠️ Using local file storage (not suitable for deployment)")
+            
+            self.prompts = config.get_prompts()
+            
+            logger.info("Initializing HiringAssistant...")
+            logger.info(f"Company: {config.company_name}")
+            logger.info(f"Model: {config.model_name}")
+            logger.info(f"API Key present: {bool(config.gemini_api_key)}")
+            
+            # Validate configuration
+            if not config.validate_config():
+                logger.error("Configuration validation failed")
+                raise ValueError("Invalid configuration. Please check your API key and settings.")
+            
+            logger.info("Configuration validation passed")
+            
+            # Set up Gemini AI
+            try:
+                logger.info("Configuring Gemini AI...")
+                genai.configure(api_key=config.gemini_api_key)
+                self.model = genai.GenerativeModel(config.model_name)
+                
+                # Configure generation settings
+                self.generation_config = genai.types.GenerationConfig(
+                    max_output_tokens=config.max_tokens,
+                    temperature=config.temperature,
+                )
+                
+                logger.info("Gemini AI initialized successfully")
+                
+            except Exception as e:
+                logger.error(f"Failed to initialize Gemini AI: {str(e)}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                raise ValueError(f"Failed to initialize Gemini AI: {str(e)}")
+            
+            # Initialize conversation state
+            self.reset_conversation()
+            logger.info("HiringAssistant initialization complete ✅")
             
         except Exception as e:
-            logger.error(f"Failed to initialize Gemini AI: {str(e)}")
+            logger.error(f"Critical error during HiringAssistant initialization: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            raise ValueError(f"Failed to initialize Gemini AI: {str(e)}")
-        
-        # Initialize conversation state
-        self.reset_conversation()
-        logger.info("HiringAssistant initialization complete")
+            # Re-raise the exception so the app can handle it properly
+            raise
     
     def reset_conversation(self):
         """Reset conversation state for new candidate."""

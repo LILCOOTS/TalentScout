@@ -129,8 +129,8 @@ def display_sidebar():
         with st.sidebar.container():
             with st.spinner("Running diagnostics..."):
                 try:
-                    if 'chatbot' in st.session_state:
-                        diagnostics = st.session_state.chatbot.run_diagnostics()
+                    if st.session_state.hiring_assistant is not None:
+                        diagnostics = st.session_state.hiring_assistant.run_diagnostics()
                         
                         # API Status
                         api_status = diagnostics["api_status"]
